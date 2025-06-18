@@ -1,0 +1,39 @@
+ci-mr:
+  stage: linters
+  variables:
+    GITLAB_TOKEN_FOR_CI: "gitlab-token"
+    APPROVAL_AUTHORS: "user1,user2"
+  script:
+    - echo "APPROVAL_AUTHORS '${APPROVAL_AUTHORS}'"
+    - echo "CI_MERGE_REQUEST_TARGET_BRANCH_NAME '${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}'"
+    - |
+      MR_INFO=$(curl --silent --request GET --header "PRIVATE-TOKEN: $GITLAB_TOKEN_FOR_CI" \
+      ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests | jq -c ".[] \
+
+      | select(.sha == \"${CI_COMMIT_SHA}\" and .state == \"opened\" and .target_branch == \"${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}\")")
+    - MR_ID=$(echo $MR_INFO | jq '.iid')
+    - |
+      APPROVALS=$(curl --silent --request GET --header "PRIVATE-TOKEN: ${GITLAB_TOKEN_FOR_CI}" \
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${MR_ID}/approvals")
+    - echo "${APPROVALS}"
+    - |
+      APPROVAL_AUTHORS_ARRAY=(${APPROVAL_AUTHORS//,/ })
+      APPROVED=false
+      for AUTHOR in "${APPROVAL_AUTHORS_ARRAY[@]}"; do
+        if echo "${APPROVALS}" | jq -e ".approved_by[] | select(.user.username == \"${AUTHOR}\")" > /dev/null; then
+          APPROVED=true
+          break
+        fi
+      done
+    - |
+      if [ "${APPROVED}" = true ]; then
+        echo "Отличная работа! Ваш merge request был одобрен!";
+      else
+        echo "Почти готово! Пожалуйста, получите одобрение от одного из следующих пользователей: ${APPROVAL_AUTHORS//,/, } чтобы продолжить.";
+        exit 1;
+      fi
+  image: registry.puls.ru/laptevss/gitlab-api-util
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"'
+  tags:
+    - runner-tag
