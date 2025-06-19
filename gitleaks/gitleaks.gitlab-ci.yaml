@@ -1,0 +1,30 @@
+.include_gitleaks_secret_detection:
+  stage: lint
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  before_script:
+    - |
+      echo "Установка jq..."
+      apk add --no-cache jq
+    - chmod +x parse_gitleaks.sh
+    - sed -i 's/\r$//' parse_gitleaks.sh
+  script:
+    - gitleaks dir . --report-path gitleaks-report.json
+  after_script:
+    - |
+      echo "Запуск скрипта для обработки отчета..."
+      ./parse_gitleaks.sh
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    reports:
+      secret_detection:
+        - gitleaks-report.json
+    expire_in: 1 week
+#  allow_failure: true
+#  rules:
+#    - if: $CI_COMMIT_BRANCH == 'master'
+  tags:
+    - k8s-tag
